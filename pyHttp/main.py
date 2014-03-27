@@ -26,6 +26,12 @@ BASE_HTML_FILE = 'index.html'
 
 DEFAULT_PORT = 7777
 
+HTTP_STATUS_CODE = {
+    200 : "200 OK",
+    404 : "404 Not Found",
+    500 : "500 Internal Server Error"
+}
+
 def server(port):
     s = socket.socket()
     s.bind(('0.0.0.0', port))
@@ -54,14 +60,20 @@ def handle_request(s, sleep):
 
 
 
-        s.send("http/1.0 200 OK\r\n\r\n")
+        # s.send("http/1.0 200 OK\r\n\r\n")
 
-        for buff in read_html_from_file(path):
-            result = s.send(buff)
-            print result
+        file_full_path = get_full_file_path(path)
+
+        if if_file_exists(file_full_path):
+            send_http_status_code(s, 200)
+            for buff in read_html_from_file(file_full_path):
+                result = s.send(buff)
+        else:
+            send_http_status_code(s, 404)
+
         
-        # s.send(request_string)
-        s.shutdown(socket.SHUT_WR)
+        
+        s.shutdown(socket.SHUT_RDWR)
         print '.','be killed'
     except Exception, ex:
         print ex
@@ -80,20 +92,29 @@ def get_request_path(req):
     list = req.split(' ')
     return list[1]
 
-def read_html_from_file(url_path):
+def send_http_status_code(socket, status_code):
+    socket.send("http/1.0 ")
+    try:
+        socket.send(HTTP_STATUS_CODE[status_code])
+    except Exception, e:
+        socket.send(HTTP_STATUS_CODE[500])
+    
+    socket.send("\r\n\r\n")
 
+def get_full_file_path(url_path):
     if is_path_a_dir(url_path):
         url_path += BASE_HTML_FILE
 
     file_path = BASE_HTML_DIR + url_path
 
     file_path = os.path.normpath(file_path)
-    
-    print file_path
-    if not os.path.exists(file_path):
-        # return 0
-        pass
 
+    return file_path
+
+def if_file_exists(file_path):
+    return os.path.exists(file_path)
+
+def read_html_from_file(file_path):
 
     with open(file_path,'rb') as html_file:
         line = html_file.read(2048)
