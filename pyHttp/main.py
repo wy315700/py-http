@@ -1,9 +1,14 @@
-#xiaorui.cc
+#!/usr/bin/python
+#-*- encoding: utf-8 -*-
 import sys
 import socket
 import time
 import os
 import struct
+import ConfigParser
+
+
+
 
 try:
     import gevent
@@ -18,6 +23,8 @@ BUFFER_SIZE = 4096
 BASE_HTML_DIR = 'C:\\Users\\wangyang\\Downloads\\lame3.99.5'
 
 BASE_HTML_FILE = 'index.html'
+
+DEFAULT_PORT = 7777
 
 def server(port):
     s = socket.socket()
@@ -103,5 +110,17 @@ def is_path_a_dir(path):
 def phrase_other_header(request_list):
     pass
 
+def read_config_file(file_path):
+    cf = ConfigParser.ConfigParser()
+    cf.read(file_path)
+    # 返回所有的section
+    try:
+        BASE_HTML_FILE = cf.get("http", "default_page")
+        DEFAULT_PORT = cf.getint("http", "default_port")
+    except Exception, e:
+        print ex
+    
+
 if __name__ == '__main__':
-    server(7777)
+    read_config_file("http.conf")
+    server(DEFAULT_PORT)
