@@ -16,6 +16,10 @@ try:
 except Exception, e:
     raise e
 
+global_file_cache_list = {}
+
+HAS_BUFFERD = True
+
 BUFFER_SIZE = 4096
 
 #BASE_HTML_DIR = 'C:\\Users\\wangyang\\Downloads\\lame3.99.5'
@@ -51,7 +55,7 @@ def handle_request(s, sleep):
             data += tmp
             if len(tmp) < BUFFER_SIZE or len(tmp) == 0:
                 break
-        print data
+        # print data
         head_list = get_header_from_request(data)
 
         head = head_list[0]
@@ -72,7 +76,7 @@ def handle_request(s, sleep):
             send_http_status_code(s, 404)
 
         s.shutdown(socket.SHUT_RDWR)
-        print '.', 'be killed'
+        # print '.', 'be killed'
     except Exception, ex:
         print ex
     finally:                                                                                                                                                                                                                                                                                                                                                                  
@@ -121,11 +125,23 @@ def if_file_exists(file_path):
 
 def read_html_from_file(file_path):
 
-    with open(file_path, 'rb') as html_file:
-        line = html_file.read(2048)
-        while len(line) > 0:
-            yield line
-            line = html_file.read(2048)
+    if HAS_BUFFERD:
+        if file_path in global_file_cache_list:
+            yield global_file_cache_list[file_path]
+        else:
+            with open(file_path, 'rb') as html_file:
+                global_file_cache_list[file_path] = ''
+                line = html_file.read(BUFFER_SIZE)
+                while len(line) > 0:
+                    global_file_cache_list[file_path] += line
+                    yield line
+                    line = html_file.read(BUFFER_SIZE)
+    else:
+        with open(file_path, 'rb') as html_file:
+            line = html_file.read(BUFFER_SIZE)
+            while len(line) > 0:
+                yield line
+                line = html_file.read(BUFFER_SIZE)
 
 
 def is_path_a_dir(path):
