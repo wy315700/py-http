@@ -20,6 +20,8 @@ global_file_cache_list = {}
 
 HAS_BUFFERD = True
 
+DEBUG_MODE = True
+
 BUFFER_SIZE = 4096
 
 #BASE_HTML_DIR = 'C:\\Users\\wangyang\\Downloads\\lame3.99.5'
@@ -40,12 +42,25 @@ def server(port):
     s = socket.socket()
     s.bind(('0.0.0.0', port))
     s.listen(500)
+    global greenlets
+    greenlets = []
     while True:
         cli, addr = s.accept()
-        gevent.spawn(handle_request, cli, gevent.sleep)
+        g = gevent.spawn(handle_request, cli, gevent.sleep)
+        greenlets.append(g)
 
 
 def handle_request(s, sleep):
+    if DEBUG_MODE:
+        print("running greenlets:\n")
+        for i, g in enumerate(greenlets, 1):
+            if not g.started and g.successful():
+                print("greenlet %d has finished" % i)
+            elif g.started and not g.successful():
+                print("greenlet %d is running" % i)
+            else:
+                print("greenlet {0} started:{4} ready:{1} succ:{2} ex:{3}".\
+                      format(i, g.ready(), g.successful(), g.exception, g.started))
     try:
         data = ''
 
@@ -69,14 +84,17 @@ def handle_request(s, sleep):
         file_full_path = get_full_file_path(path)
 
         if if_file_exists(file_full_path):
+            content_length = os.path.getsize(file_full_path)
             send_http_status_code(s, 200)
+            send_http_header(s, "Content-Length", content_length)
+            s.send("\r\n")
             for buff in read_html_from_file(file_full_path):
                 result = s.send(buff)
         else:
             send_http_status_code(s, 404)
 
-        s.shutdown(socket.SHUT_RDWR)
-        # print '.', 'be killed'
+        #s.shutdown(socket.SHUT_RDWR)
+        #print '.', 'be killed'
     except Exception, ex:
         print ex
     finally:                                                                                                                                                                                                                                                                                                                                                                  
@@ -104,8 +122,11 @@ def send_http_status_code(sock, status_code):
         sock.send(HTTP_STATUS_CODE[status_code])
     except Exception, e:
         sock.send(HTTP_STATUS_CODE[500])
-    
-    sock.send("\r\n\r\n")
+    sock.send("\r\n")
+
+
+def send_http_header(sock, header, value):
+    sock.send("{0}: {1}\r\n".format(header, value))
 
 
 def get_full_file_path(url_path):
