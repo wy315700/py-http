@@ -91,6 +91,7 @@ def handle_request(s, sleep):
             send_http_header(s, "Content-Length", file=file_full_path)
             send_http_header(s, "Date")
             send_http_header(s, "Content-Type", file=file_full_path)
+            send_http_header(s, "Server")
             s.send("\r\n")
             for buff in read_html_from_file(file_full_path):
                 result = s.send(buff)
@@ -150,6 +151,8 @@ def send_http_header(sock, header, **kwargs):
             # RFC 2046, The "octet-stream" subtype is used to indicate that a body contains arbitrary binary data.
             mime = "application/octet-stream"
         sock.send("{0}: {1}\r\n".format("Content-Type", mime))
+    if header == "Server":
+        sock.send("{0}: {1}\r\n".format("Server", "ProfessorWang Server/1.0"))
 
 
 def get_full_file_path(url_path):
