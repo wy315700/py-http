@@ -46,13 +46,16 @@ def server(port):
     greenlets = []
     while True:
         cli, addr = s.accept()
-        g = gevent.spawn(handle_request, cli, gevent.sleep)
-        greenlets.append(g)
+        if DEBUG_MODE:
+            g = gevent.spawn(handle_request, cli, gevent.sleep)
+            greenlets.append(g)
+        else:
+            gevent.spawn(handle_request, cli, gevent.sleep)
 
 
 def handle_request(s, sleep):
     if DEBUG_MODE:
-        print("running greenlets:\n")
+        print("running greenlets:")
         for i, g in enumerate(greenlets, 1):
             if not g.started and g.successful():
                 print("greenlet %d has finished" % i)
