@@ -87,9 +87,9 @@ def handle_request(s, sleep):
         file_full_path = get_full_file_path(path)
 
         if if_file_exists(file_full_path):
-            content_length = os.path.getsize(file_full_path)
             send_http_status_code(s, 200)
-            send_http_header(s, "Content-Length", content_length)
+            send_http_header(s, "Content-Length", file=file_full_path)
+            send_http_header(s, "Date")
             s.send("\r\n")
             for buff in read_html_from_file(file_full_path):
                 result = s.send(buff)
@@ -128,8 +128,18 @@ def send_http_status_code(sock, status_code):
     sock.send("\r\n")
 
 
-def send_http_header(sock, header, value):
-    sock.send("{0}: {1}\r\n".format(header, value))
+def send_http_header(sock, header, **kwargs):
+    if header == "Content-Length":
+        content_length = os.path.getsize(kwargs['file'])
+        sock.send("{0}: {1}\r\n".format("Content-Length", content_length))
+    if header == "Date":
+        from email.utils import formatdate
+        from datetime import datetime
+        from time import mktime
+        now = datetime.now()
+        stamp = mktime(now.timetuple())
+        date = formatdate(stamp, False, True)
+        sock.send("{0}: {1}\r\n".format("Date", date))
 
 
 def get_full_file_path(url_path):
