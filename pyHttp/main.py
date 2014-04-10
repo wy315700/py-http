@@ -92,6 +92,7 @@ def handle_request(s, sleep):
             send_http_header(s, "Date")
             send_http_header(s, "Content-Type", file=file_full_path)
             send_http_header(s, "Server")
+            send_http_header(s, "Last-Modified", file=file_full_path)
             s.send("\r\n")
             for buff in read_html_from_file(file_full_path):
                 result = s.send(buff)
@@ -129,18 +130,24 @@ def send_http_status_code(sock, status_code):
         sock.send(HTTP_STATUS_CODE[500])
     sock.send("\r\n")
 
+def get_gmttime(mode, file=''):
+    from email.utils import formatdate
+    from datetime import datetime
+    from time import mktime
+    if mode == 'now':
+        now = datetime.now()  # datetime.datetime(2014, 4, 10, 22, 29, 36, 957720)
+        stamp = mktime(now.timetuple())  # 1397140176.0
+    if mode == 'last-modified':
+        stamp = os.path.getmtime(file)  # 1396614590.19
+    date = formatdate(stamp, False, True)  # 'Thu, 10 Apr 2014 14:29:36 GMT'
+    return date
 
 def send_http_header(sock, header, **kwargs):
     if header == "Content-Length":
         content_length = os.path.getsize(kwargs['file'])
         sock.send("{0}: {1}\r\n".format("Content-Length", content_length))
     if header == "Date":
-        from email.utils import formatdate
-        from datetime import datetime
-        from time import mktime
-        now = datetime.now()
-        stamp = mktime(now.timetuple())
-        date = formatdate(stamp, False, True)
+        date = get_gmttime(mode='now')
         sock.send("{0}: {1}\r\n".format("Date", date))
     if header == "Content-Type":
         import mimetypes
@@ -153,6 +160,9 @@ def send_http_header(sock, header, **kwargs):
         sock.send("{0}: {1}\r\n".format("Content-Type", mime))
     if header == "Server":
         sock.send("{0}: {1}\r\n".format("Server", "ProfessorWang Server/1.0"))
+    if header == "Last-Modified":
+        mtime = get_gmttime('last-modified', file=kwargs['file'])
+        sock.send("{0}: {1}\r\n".format("Last-Modified", mtime))
 
 
 def get_full_file_path(url_path):
