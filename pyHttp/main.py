@@ -33,8 +33,9 @@ DEFAULT_PORT = 7777
 
 HTTP_STATUS_CODE = {
     200: "200 OK",
+    304: "304 Not Modified",
     404: "404 Not Found",
-    500: "500 Internal Server Error"
+    500: "500 Internal Server Error",
 }
 
 
@@ -74,16 +75,10 @@ def handle_request(s, sleep):
             if len(tmp) < BUFFER_SIZE or len(tmp) == 0:
                 break
         # print data
-        head_list = get_header_from_request(data)
-
-        head = head_list[0]
-
-        method = get_request_method(head)
-
-        path = get_request_path(head)
-
-        # s.send("http/1.0 200 OK\r\n\r\n")
-
+        header_list = get_header_from_request(data)
+        request_line = header_list[0]
+        method = get_request_method(request_line)
+        path = get_request_path(request_line)
         file_full_path = get_full_file_path(path)
 
         if if_file_exists(file_full_path):
