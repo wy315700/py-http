@@ -75,13 +75,19 @@ def handle_request(s, sleep):
             if len(tmp) < BUFFER_SIZE or len(tmp) == 0:
                 break
         # print data
-        header_list = get_header_from_request(data)
+        header_list = get_header_from_request(data)  # 仅仅按\r\n分割
+        try:
+            header_dict = {h.split()[0].strip():h.split()[1].strip() for h in header_list.split(':')}
+        except KeyError:
+            print('KeyError:\n', header_list)
         request_line = header_list[0]
         method = get_request_method(request_line)
         path = get_request_path(request_line)
         file_full_path = get_full_file_path(path)
 
         if if_file_exists(file_full_path):
+            if "if-modified-since" in [h.lower() for h in header_dict]:
+                mtime = os.path.getmtime(file_full_path)
             send_http_status_code(s, 200)
             send_http_header(s, "Content-Length", file=file_full_path)
             send_http_header(s, "Date")
@@ -134,7 +140,7 @@ def get_gmttime(mode, file=''):
         stamp = mktime(now.timetuple())  # 1397140176.0
     if mode == 'last-modified':
         stamp = os.path.getmtime(file)  # 1396614590.19
-    date = formatdate(stamp, False, True)  # 'Thu, 10 Apr 2014 14:29:36 GMT'
+    date = formatdate(stamp, localtime=False, usegmt=True)  # 'Thu, 10 Apr 2014 14:29:36 GMT'
     return date
 
 def send_http_header(sock, header, **kwargs):
