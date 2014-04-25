@@ -41,7 +41,7 @@ HTTP_STATUS_CODE = {
 
 def server(port):
     s = socket.socket()
-    s.bind(('0.0.0.0', port))
+    s.bind(('127.0.0.2', port))
     s.listen(500)
     global greenlets
     greenlets = []
@@ -77,7 +77,9 @@ def handle_request(s, sleep):
         # print data
         header_list = get_header_from_request(data)  # 仅仅按\r\n分割
         try:
-            header_dict = {h.split()[0].strip():h.split()[1].strip() for h in header_list.split(':')}
+            print(header_list)
+            header_dict = {h[0:h.index(':')].strip().lower(): h[h.index(':') + 1:].strip()\
+                    for h in header_list if ':' in h}
         except KeyError:
             print('KeyError:\n', header_list)
         request_line = header_list[0]
@@ -85,9 +87,7 @@ def handle_request(s, sleep):
         path = get_request_path(request_line)
         file_full_path = get_full_file_path(path)
 
-        if if_file_exists(file_full_path):
-            if "if-modified-since" in [h.lower() for h in header_dict]:
-                mtime = os.path.getmtime(file_full_path)
+        def normal_response(file_full_path):
             send_http_status_code(s, 200)
             send_http_header(s, "Content-Length", file=file_full_path)
             send_http_header(s, "Date")
@@ -97,6 +97,23 @@ def handle_request(s, sleep):
             s.send("\r\n")
             for buff in read_html_from_file(file_full_path):
                 result = s.send(buff)
+
+        if if_file_exists(file_full_path):
+            if "if-modified-since" in header_dict:
+                mtime = os.path.getmtime(file_full_path)
+                mtime = time.mktime(time.gmtime(mtime))
+                check_to_time = header_dict["if-modified-since"]
+                check_to_time = time.mktime(time.strptime(check_to_time, "%a, %d %b %Y %H:%M:%S GMT"))
+                if mtime <= check_to_time:
+                    send_http_status_code(s, 304)
+                    send_http_header(s, "Date")
+                    send_http_header(s, "Server")
+                    send_http_header(s, "Last-Modified", file=file_full_path)
+                    s.send("\r\n")
+                else:
+                    normal_response(file_full_path)
+            else:
+                normal_response(file_full_path)
         else:
             send_http_status_code(s, 404)
 
@@ -104,7 +121,7 @@ def handle_request(s, sleep):
         #print '.', 'be killed'
     except Exception, ex:
         print ex
-    finally:                                                                                                                                                                                                                                                                                                                                                                  
+    finally:
         s.close()
 
 
@@ -222,7 +239,7 @@ def read_config_file(file_path):
         DEFAULT_PORT = cf.getint("http", "default_port")
     except Exception, e:
         print e
-    
+
 
 if __name__ == '__main__':
     read_config_file("http.conf")
