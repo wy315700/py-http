@@ -41,7 +41,7 @@ HTTP_STATUS_CODE = {
 
 def server(port):
     s = socket.socket()
-    s.bind(('127.0.0.2', port))
+    s.bind(('0.0.0.0', port))
     s.listen(500)
     global greenlets
     greenlets = []
