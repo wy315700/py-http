@@ -31,6 +31,10 @@ BASE_HTML_FILE = 'index.html'
 
 DEFAULT_PORT = 7777
 
+EXPIRES_ON = False
+
+EXPIRES_FILE_REG = {}
+
 HTTP_STATUS_CODE = {
     200: "200 OK",
     304: "304 Not Modified",
@@ -94,6 +98,11 @@ def handle_request(s, sleep):
             send_http_header(s, "Content-Type", file=file_full_path)
             send_http_header(s, "Server")
             send_http_header(s, "Last-Modified", file=file_full_path)
+
+            expiresInfo = check_expires(file_full_path)
+            if EXPIRES_ON and expiresInfo['is']:
+                send_http_header(s, "expires", expires=expiresInfo['sec'])
+				
             s.send("\r\n")
             for buff in read_html_from_file(file_full_path):
                 result = s.send(buff)
@@ -148,7 +157,7 @@ def send_http_status_code(sock, status_code):
         sock.send(HTTP_STATUS_CODE[500])
     sock.send("\r\n")
 
-def get_gmttime(mode, file=''):
+def get_gmttime(mode, file='', t=''):
     from email.utils import formatdate
     from datetime import datetime
     from time import mktime
@@ -157,6 +166,9 @@ def get_gmttime(mode, file=''):
         stamp = mktime(now.timetuple())  # 1397140176.0
     if mode == 'last-modified':
         stamp = os.path.getmtime(file)  # 1396614590.19
+    if mode == 'expires':
+        now = datetime.now() # datetime.datetime(2014, 4, 10, 22, 29, 36, 957720)
+        stamp = mktime(now.timetuple())+t   # 1397140176.0
     date = formatdate(stamp, localtime=False, usegmt=True)  # 'Thu, 10 Apr 2014 14:29:36 GMT'
     return date
 
@@ -181,7 +193,11 @@ def send_http_header(sock, header, **kwargs):
     if header == "Last-Modified":
         mtime = get_gmttime('last-modified', file=kwargs['file'])
         sock.send("{0}: {1}\r\n".format("Last-Modified", mtime))
-
+		
+    if header == "expires":
+        #print "expires", kwargs['expires']
+        mtime = get_gmttime('expires', t=kwargs['expires'])
+        sock.send("{0}: {1}\r\n".format("Expires", mtime))
 
 def get_full_file_path(url_path):
     if is_path_a_dir(url_path):
@@ -235,11 +251,25 @@ def read_config_file(file_path):
     cf.read(file_path)
     # 返回所有的section
     try:
+        global BASE_HTML_FILE, DEFAULT_PORT, EXPIRES_ON, EXPIRES_FILE_REG  # add global
         BASE_HTML_FILE = cf.get("http", "default_page")
         DEFAULT_PORT = cf.getint("http", "default_port")
+        EXPIRES_ON = cf.getboolean("http", "expires")
+        EXPIRES_FILE_REG = eval(cf.get("http", "expiresreg"))  # to dict
     except Exception, e:
         print e
 
+		
+def check_expires(url):
+    expires = {'is':0}
+    import re
+    for preg in EXPIRES_FILE_REG:
+        m = re.search(preg, url)
+        if m:
+            expires['is'] = 1
+            expires['sec'] = EXPIRES_FILE_REG[preg]
+            break
+    return expires
 
 if __name__ == '__main__':
     read_config_file("http.conf")
