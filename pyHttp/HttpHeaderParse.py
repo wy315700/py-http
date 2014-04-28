@@ -27,8 +27,6 @@ def parse_header(request_header_str):
 
     except KeyError:
         print('KeyError:\n', header_list)
-
-    print header_info
     return header_info
 
 if __name__ == '__main__':

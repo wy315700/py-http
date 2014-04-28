@@ -1,10 +1,7 @@
 #!/usr/bin/python
 #-*- encoding: utf-8 -*-
-import sys
 import socket
 import time
-import os
-import struct
 import ConfigParser
 import HttpHeaderParse
 import HttpCore
@@ -37,6 +34,11 @@ HTTP_STATUS_CODE = {
     404: "404 Not Found",
     500: "500 Internal Server Error",
 }
+
+import logging
+import logging.config
+logging.config.fileConfig("logging.conf")
+logger = logging.getLogger('')
 
 
 def server(port):
@@ -74,10 +76,19 @@ def handle_request(s, sleep):
             data += tmp
             if len(tmp) < BUFFER_SIZE or len(tmp) == 0:
                 break
+
+        # 空内容
+        if not len(data):
+            return
+
         # print data
         header_info = HttpHeaderParse.parse_header(data)
-        file_full_path = HttpCore.get_full_file_path(header_info['url']) # 获得文件的全路径
 
+        # 记录访问日志
+        peer = s.getpeername()
+        logger.info(str(peer[0]) + ":" + str(peer[1]) + " " + header_info['method'] +" " + header_info['url'])
+
+        file_full_path = HttpCore.get_full_file_path(header_info['url']) # 获得文件的全路径
         # 获取文件信息
         fileInfo = HttpCore.get_file_info(file_full_path)
 
@@ -102,12 +113,10 @@ def handle_request(s, sleep):
 
         if fileInfo['exists']:
             # 文件存在
-            print fileInfo['mtime']
             if "if-modified-since" in header_info['header']:  #有modf参数
                 check_to_time = header_info['header']["if-modified-since"]
                 check_to_time = time.mktime(time.strptime(check_to_time, "%a, %d %b %Y %H:%M:%S GMT"))
                 if fileInfo['mtime'] <= check_to_time:
-                    print '304'
                     send_http_status_code(s, 304)
                     normal_response(fileInfo)
                 else:
@@ -126,6 +135,7 @@ def handle_request(s, sleep):
         #print '.', 'be killed'
     except Exception, ex:
         print ex
+        logger.debug(str(peer[0]) + ":" + str(peer[1]) + " " + ex + " " + data)
     finally:
         s.close()
 
