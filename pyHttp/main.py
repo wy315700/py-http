@@ -6,7 +6,8 @@ import time
 import os
 import struct
 import ConfigParser
-
+import HttpHeaderParse
+import HttpCore
 
 try:
     import gevent
@@ -23,11 +24,6 @@ HAS_BUFFERD = True
 DEBUG_MODE = True
 
 BUFFER_SIZE = 4096
-
-#BASE_HTML_DIR = 'C:\\Users\\wangyang\\Downloads\\lame3.99.5'
-BASE_HTML_DIR = '../html'
-
-BASE_HTML_FILE = 'index.html'
 
 DEFAULT_PORT = 7777
 
@@ -79,51 +75,51 @@ def handle_request(s, sleep):
             if len(tmp) < BUFFER_SIZE or len(tmp) == 0:
                 break
         # print data
-        header_list = get_header_from_request(data)  # 仅仅按\r\n分割
-        try:
-            print(header_list)
-            header_dict = {h[0:h.index(':')].strip().lower(): h[h.index(':') + 1:].strip()\
-                    for h in header_list if ':' in h}
-        except KeyError:
-            print('KeyError:\n', header_list)
-        request_line = header_list[0]
-        method = get_request_method(request_line)
-        path = get_request_path(request_line)
-        file_full_path = get_full_file_path(path)
+        header_info = HttpHeaderParse.parse_header(data)
+        file_full_path = HttpCore.get_full_file_path(header_info['url']) # 获得文件的全路径
 
-        def normal_response(file_full_path):
-            send_http_status_code(s, 200)
-            send_http_header(s, "Content-Length", file=file_full_path)
-            send_http_header(s, "Date")
-            send_http_header(s, "Content-Type", file=file_full_path)
-            send_http_header(s, "Server")
-            send_http_header(s, "Last-Modified", file=file_full_path)
+        # 获取文件信息
+        fileInfo = HttpCore.get_file_info(file_full_path)
+
+        # 响应http header消息
+        def normal_response(fileInfo):
+            send_http_header(s, "Content-Length", fileInfo['size'])
+            send_http_header(s, "Date", HttpCore.get_gmttime_str())
+            send_http_header(s, "Content-Type", fileInfo['mimetype'])
+            send_http_header(s, "Server", 'ProfessorWang Server/1.0')
+            send_http_header(s, "Last-Modified", fileInfo['mtimestr'])
 
             expiresInfo = check_expires(file_full_path)
             if EXPIRES_ON and expiresInfo['is']:
-                send_http_header(s, "expires", expires=expiresInfo['sec'])
-				
+                send_http_header(s, "expires", HttpCore.get_gmttime_str(expires=expiresInfo['sec']))
+
             s.send("\r\n")
-            for buff in read_html_from_file(file_full_path):
+
+        # 响应文本内容
+        def content_response(fileInfo):
+            for buff in read_html_from_file(fileInfo['filePath']):
                 result = s.send(buff)
 
-        if if_file_exists(file_full_path):
-            if "if-modified-since" in header_dict:
-                mtime = os.path.getmtime(file_full_path)
-                mtime = time.mktime(time.gmtime(mtime))
-                check_to_time = header_dict["if-modified-since"]
+        if fileInfo['exists']:
+            # 文件存在
+            print fileInfo['mtime']
+            if "if-modified-since" in header_info['header']:  #有modf参数
+                check_to_time = header_info['header']["if-modified-since"]
                 check_to_time = time.mktime(time.strptime(check_to_time, "%a, %d %b %Y %H:%M:%S GMT"))
-                if mtime <= check_to_time:
+                if fileInfo['mtime'] <= check_to_time:
+                    print '304'
                     send_http_status_code(s, 304)
-                    send_http_header(s, "Date")
-                    send_http_header(s, "Server")
-                    send_http_header(s, "Last-Modified", file=file_full_path)
-                    s.send("\r\n")
+                    normal_response(fileInfo)
                 else:
-                    normal_response(file_full_path)
+                    send_http_status_code(s, 200)
+                    normal_response(fileInfo)
+                    content_response(fileInfo)
             else:
-                normal_response(file_full_path)
+                send_http_status_code(s, 200)
+                normal_response(fileInfo)
+                content_response(fileInfo)
         else:
+            # 文件不存在
             send_http_status_code(s, 404)
 
         #s.shutdown(socket.SHUT_RDWR)
@@ -134,21 +130,6 @@ def handle_request(s, sleep):
         s.close()
 
 
-def get_header_from_request(request):
-    req_list = request.split("\r\n")
-    return req_list
-
-
-def get_request_method(req):
-    l = req.split(' ')
-    return l[0]
-
-
-def get_request_path(req):
-    l = req.split(' ')
-    return l[1]
-
-
 def send_http_status_code(sock, status_code):
     sock.send("http/1.0 ")
     try:
@@ -157,62 +138,8 @@ def send_http_status_code(sock, status_code):
         sock.send(HTTP_STATUS_CODE[500])
     sock.send("\r\n")
 
-def get_gmttime(mode, file='', t=''):
-    from email.utils import formatdate
-    from datetime import datetime
-    from time import mktime
-    if mode == 'now':
-        now = datetime.now()  # datetime.datetime(2014, 4, 10, 22, 29, 36, 957720)
-        stamp = mktime(now.timetuple())  # 1397140176.0
-    if mode == 'last-modified':
-        stamp = os.path.getmtime(file)  # 1396614590.19
-    if mode == 'expires':
-        now = datetime.now() # datetime.datetime(2014, 4, 10, 22, 29, 36, 957720)
-        stamp = mktime(now.timetuple())+t   # 1397140176.0
-    date = formatdate(stamp, localtime=False, usegmt=True)  # 'Thu, 10 Apr 2014 14:29:36 GMT'
-    return date
-
-def send_http_header(sock, header, **kwargs):
-    if header == "Content-Length":
-        content_length = os.path.getsize(kwargs['file'])
-        sock.send("{0}: {1}\r\n".format("Content-Length", content_length))
-    if header == "Date":
-        date = get_gmttime(mode='now')
-        sock.send("{0}: {1}\r\n".format("Date", date))
-    if header == "Content-Type":
-        import mimetypes
-        mimetypes.init()
-        try:
-            mime = mimetypes.types_map[os.path.splitext(kwargs['file'])[1]]
-        except KeyError:
-            # RFC 2046, The "octet-stream" subtype is used to indicate that a body contains arbitrary binary data.
-            mime = "application/octet-stream"
-        sock.send("{0}: {1}\r\n".format("Content-Type", mime))
-    if header == "Server":
-        sock.send("{0}: {1}\r\n".format("Server", "ProfessorWang Server/1.0"))
-    if header == "Last-Modified":
-        mtime = get_gmttime('last-modified', file=kwargs['file'])
-        sock.send("{0}: {1}\r\n".format("Last-Modified", mtime))
-		
-    if header == "expires":
-        #print "expires", kwargs['expires']
-        mtime = get_gmttime('expires', t=kwargs['expires'])
-        sock.send("{0}: {1}\r\n".format("Expires", mtime))
-
-def get_full_file_path(url_path):
-    if is_path_a_dir(url_path):
-        url_path += BASE_HTML_FILE
-
-    file_path = BASE_HTML_DIR + url_path
-
-    file_path = os.path.normpath(file_path)
-
-    return file_path
-
-
-def if_file_exists(file_path):
-    return os.path.exists(file_path)
-
+def send_http_header(sock, headerKey, headerValue):
+    sock.send("{0}: {1}\r\n".format(headerKey, headerValue))
 
 def read_html_from_file(file_path):
 
@@ -233,18 +160,6 @@ def read_html_from_file(file_path):
             while len(line) > 0:
                 yield line
                 line = html_file.read(BUFFER_SIZE)
-
-
-def is_path_a_dir(path):
-    if path[-1] == '/':
-        return True
-    else:
-        return False
-
-
-def phrase_other_header(request_list):
-    pass
-
 
 def read_config_file(file_path):
     cf = ConfigParser.ConfigParser()
